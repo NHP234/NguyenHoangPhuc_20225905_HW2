@@ -1,21 +1,27 @@
-# Compiled object files
-*.o
-
-# Executable
+# Compiled executables
+UDP_Server/server
+UDP_Client/client
 resolver
 
-# Editor files
+# Object files
+*.o
+*.obj
+
+# Log files
+log_*.txt
+
+# Archives
+*.rar
+*.zip
+*.tar.gz
+
+# IDE and editor files
+.vscode/
+.idea/
 *.swp
 *.swo
 *~
-.vscode/
-.idea/
 
-# OS files
+# OS specific
 .DS_Store
 Thumbs.db
-
-# Backup files
-*.bak
-*.backup
-

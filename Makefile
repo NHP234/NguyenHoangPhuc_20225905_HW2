@@ -1,34 +1,30 @@
-# Makefile for DNS Resolver Application
-# Modular structure with multiple source files
+# Root Makefile for UDP DNS Resolver Client/Server
+# Build both client and server
 
-CC = gcc
-CFLAGS = -Wall -Wextra -O2
-TARGET = resolver
+.PHONY: all client server clean
 
-# Source files
-SRCS = main.c validation.c utils.c dns_lookup.c
-OBJS = $(SRCS:.c=.o)
+# Build both client and server
+all: server client
 
-# Header files (for dependency tracking)
-HEADERS = resolver.h validation.h utils.h dns_lookup.h
+# Build server
+server:
+	@echo "Building server..."
+	@cd UDP_Server && $(MAKE)
+	@echo "Server built successfully!"
 
-# Phony targets
-.PHONY: all clean rebuild
+# Build client
+client:
+	@echo "Building client..."
+	@cd UDP_Client && $(MAKE)
+	@echo "Client built successfully!"
 
-# Default target
-all: $(TARGET)
-
-# Build the resolver executable
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS)
-
-# Compile individual object files
-%.o: %.c $(HEADERS)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-# Clean up compiled files
+# Clean both client and server
 clean:
-	rm -f $(TARGET) $(OBJS)
+	@echo "Cleaning server..."
+	@cd UDP_Server && $(MAKE) clean
+	@echo "Cleaning client..."
+	@cd UDP_Client && $(MAKE) clean
+	@echo "Clean complete!"
 
-# Rebuild everything from scratch
+# Rebuild everything
 rebuild: clean all
