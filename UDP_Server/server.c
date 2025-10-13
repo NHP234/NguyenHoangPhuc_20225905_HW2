@@ -43,8 +43,14 @@ void write_log(const char *request, const char *result) {
         result_clean[--len] = '\0';
     }
     
-    // Create log entry
-    sprintf(log_entry, "[%s]$%s$%s\n", timestamp, request, result_clean);
+    // Determine success (+) or failure (-)
+    char status = '+';
+    if (strstr(result_clean, "Not found information") != NULL) {
+        status = '-';
+    }
+    
+    // Create log entry with status indicator
+    sprintf(log_entry, "[%s]$%c$%s$%s\n", timestamp, status, request, result_clean);
     
     // Open log file in append mode
     log_file = fopen(log_filename, "a");
@@ -94,7 +100,7 @@ int main(int argc, char *argv[]) {
     char result[BUFFER_SIZE];
     int recv_len;
     
-    // Check command line arguments
+    
     if (argc != 2) {
         printf("Usage: %s PortNumber\n", argv[0]);
         return 1;
@@ -106,20 +112,20 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    // Create UDP socket
+    
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd < 0) {
         perror("Error: Could not create socket");
         return 1;
     }
     
-    // Initialize server address structure
+    
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(port);
     
-    // Bind socket to address
+    
     if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         perror("Error: Bind failed");
         close(sockfd);
@@ -129,7 +135,7 @@ int main(int argc, char *argv[]) {
     printf("Server is running on port %d\n", port);
     printf("Waiting for requests...\n");
     
-    // Main server loop - never terminates
+    
     while (1) {
         memset(buffer, 0, sizeof(buffer));
         memset(result, 0, sizeof(result));
@@ -141,16 +147,10 @@ int main(int argc, char *argv[]) {
         
         if (recv_len < 0) {
             perror("Error: Receive failed");
-            continue;  // Don't exit, just continue to next iteration
+            continue;  
         }
         
-        buffer[recv_len] = '\0';  // Null-terminate the received string
-        
-        // Remove newline if present
-        int len = strlen(buffer);
-        if (len > 0 && buffer[len-1] == '\n') {
-            buffer[len-1] = '\0';
-        }
+        buffer[recv_len] = '\0';  
         
         // Get client IP and port for logging
         char client_ip[INET_ADDRSTRLEN];

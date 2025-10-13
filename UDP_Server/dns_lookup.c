@@ -127,11 +127,7 @@ void reverse_lookup(const char *ip, char *result) {
     
     memset(&sa, 0, sizeof(sa));
     sa.sin_family = AF_INET;
-    
-    if (inet_pton(AF_INET, ip, &(sa.sin_addr)) != 1) {
-        strcpy(result, "Invalid IP address format");
-        return;
-    }
+    inet_pton(AF_INET, ip, &(sa.sin_addr));
     
     status = getnameinfo((struct sockaddr *)&sa, sizeof(sa),
                         host, sizeof(host), NULL, 0, NI_NAMEREQD);
