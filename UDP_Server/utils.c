@@ -30,3 +30,15 @@ int is_hostname_in_list(const char *hostname, char list[][MAX_HOSTNAME_LEN], int
     return 0;
 }
 
+/**
+ * @function: trim_newline
+ * @param: str - String to trim trailing newline
+ * @return: void
+ */
+void trim_newline(char *str) {
+    int len = strlen(str);
+    if (len > 0 && str[len-1] == '\n') {
+        str[len-1] = '\0';
+    }
+}
+

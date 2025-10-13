@@ -21,5 +21,12 @@ void get_ip_address(struct addrinfo *addr_info, char *ipstr, size_t size);
  */
 int is_hostname_in_list(const char *hostname, char list[][MAX_HOSTNAME_LEN], int count);
 
+/**
+ * @function: trim_newline
+ * @param: str - String to trim trailing newline
+ * @return: void
+ */
+void trim_newline(char *str);
+
 #endif /* UTILS_H */
 

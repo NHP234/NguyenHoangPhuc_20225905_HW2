@@ -6,11 +6,11 @@ CFLAGS = -Wall -Wextra -O2
 TARGET = server
 
 # Source files
-SRCS = server.c validation.c utils.c dns_lookup.c
+SRCS = server.c validation.c utils.c dns_lookup.c logger.c
 OBJS = $(SRCS:.c=.o)
 
 # Header files (for dependency tracking)
-HEADERS = resolver.h validation.h utils.h dns_lookup.h
+HEADERS = resolver.h validation.h utils.h dns_lookup.h logger.h
 
 # Phony targets
 .PHONY: all clean rebuild
