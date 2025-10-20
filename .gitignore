@@ -1,6 +1,8 @@
 # Compiled executables
 UDP_Server/server
 UDP_Client/client
+TCP_Server/server
+TCP_Client/client
 server
 client
 resolver
