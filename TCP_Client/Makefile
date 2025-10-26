@@ -1,18 +1,11 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99
-TARGET = client
-OBJS = client.o
+CFLAGS = -Wall
 
-all: $(TARGET)
+all: client
 
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS)
-
-client.o: client.c
-	$(CC) $(CFLAGS) -c client.c
+client: client.c
+	$(CC) $(CFLAGS) -o client client.c
 
 clean:
-	rm -f $(TARGET) $(OBJS)
-
-.PHONY: all clean
+	rm -f client
 

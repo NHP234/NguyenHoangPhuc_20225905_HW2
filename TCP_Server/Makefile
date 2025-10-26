@@ -1,21 +1,11 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99
-TARGET = server
-OBJS = server.o logger.o
+CFLAGS = -Wall
 
-all: $(TARGET)
+all: server
 
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS)
-
-server.o: server.c logger.h
-	$(CC) $(CFLAGS) -c server.c
-
-logger.o: logger.c logger.h
-	$(CC) $(CFLAGS) -c logger.c
+server: server.c
+	$(CC) $(CFLAGS) -o server server.c
 
 clean:
-	rm -f $(TARGET) $(OBJS)
-
-.PHONY: all clean
+	rm -f server
 
