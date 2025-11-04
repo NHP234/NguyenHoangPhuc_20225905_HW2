@@ -1,3 +1,4 @@
+/* Multi-threaded TCP Server for posting articles */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,11 +7,61 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <signal.h>
+#include <pthread.h>
 #include <errno.h>
 
 #define BUFF_SIZE 4096
-#define MAX_USERNAME 1024
+#define MAX_ACCOUNTS 100
+#define MAX_USERNAME 50
+#define BACKLOG 20
+
+/* Account structure */
+typedef struct {
+    char username[MAX_USERNAME];
+    int status; /* 0: blocked, 1: active */
+    int logged_in; /* 0: not logged in, 1: logged in */
+} account_t;
+
+/* Connection state for each client */
+typedef struct {
+    char recv_buffer[BUFF_SIZE];
+    int buffer_pos;
+    int sockfd;
+    char logged_user[MAX_USERNAME];
+    int is_logged_in;
+} conn_state_t;
+
+/* Global variables */
+account_t accounts[MAX_ACCOUNTS];
+int account_count = 0;
+pthread_mutex_t account_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/* Function prototypes */
+void load_accounts();
+int tcp_send(int sockfd, char *msg);
+int tcp_receive(int sockfd, conn_state_t *state, char *buffer, int max_len);
+void *handle_client(void *arg);
+void process_command(conn_state_t *state, char *command);
+
+/* Load accounts from file */
+void load_accounts() {
+    FILE *f = fopen("TCP_Server/account.txt", "r");
+    if (f == NULL) {
+        perror("Cannot open TCP_Server/account.txt");
+        exit(1);
+    }
+    
+    account_count = 0;
+    while (fscanf(f, "%s %d", accounts[account_count].username, 
+                  &accounts[account_count].status) == 2) {
+        accounts[account_count].logged_in = 0;
+        account_count++;
+        if (account_count >= MAX_ACCOUNTS) break;
+    }
+    
+    fclose(f);
+    printf("Loaded %d accounts\n", account_count);
+}
 
 /* Send message with \r\n delimiter */
 int tcp_send(int sockfd, char *msg) {
@@ -33,178 +84,215 @@ int tcp_send(int sockfd, char *msg) {
     return total;
 }
 
-/* Receive message until \r\n */
-int tcp_receive(int sockfd, char *buffer, int max_len) {
-    static char recv_buffer[BUFF_SIZE];
-    static int buffer_pos = 0;
+/* Receive message with \r\n delimiter */
+int tcp_receive(int sockfd, conn_state_t *state, char *buffer, int max_len) {
     int bytes_received, i;
     
     while (1) {
-        /* Check if we have \r\n in buffer */
-        for (i = 0; i < buffer_pos - 1; i++) {
-            if (recv_buffer[i] == '\r' && recv_buffer[i + 1] == '\n') {
+        /* Check if we have \r\n in recv_buffer */
+        for (i = 0; i < state->buffer_pos - 1; i++) {
+            if (state->recv_buffer[i] == '\r' && state->recv_buffer[i + 1] == '\n') {
                 /* Found complete message */
                 int msg_len = i;
                 if (msg_len >= max_len) {
                     msg_len = max_len - 1;
                 }
                 
-                memcpy(buffer, recv_buffer, msg_len);
+                memcpy(buffer, state->recv_buffer, msg_len);
                 buffer[msg_len] = '\0';
                 
                 /* Remove message from buffer */
-                buffer_pos -= (i + 2);
-                memmove(recv_buffer, recv_buffer + i + 2, buffer_pos);
+                state->buffer_pos -= (i + 2);
+                memmove(state->recv_buffer, state->recv_buffer + i + 2, state->buffer_pos);
                 
                 return msg_len;
             }
         }
         
         /* Receive more data */
-        if (buffer_pos >= BUFF_SIZE - 1) {
+        if (state->buffer_pos >= BUFF_SIZE - 1) {
             return -1; /* Buffer full */
         }
         
-        bytes_received = recv(sockfd, recv_buffer + buffer_pos, 
-                             BUFF_SIZE - buffer_pos - 1, 0);
+        bytes_received = recv(sockfd, state->recv_buffer + state->buffer_pos, 
+                             BUFF_SIZE - state->buffer_pos - 1, 0);
         if (bytes_received <= 0) {
             return -1;
         }
         
-        buffer_pos += bytes_received;
+        state->buffer_pos += bytes_received;
     }
 }
 
-/* Check if account exists and get status */
-int check_account(char *username, int *status) {
-    FILE *f = fopen("TCP_Server/account.txt", "r");
-    if (f == NULL) {
-        perror("Cannot open TCP_Server/account.txt");
-        return 0;
+/* Process client commands */
+void process_command(conn_state_t *state, char *command) {
+    char cmd[20], arg[BUFF_SIZE];
+    int i;
+    
+    /* Parse command */
+    if (sscanf(command, "%s", cmd) != 1) {
+        tcp_send(state->sockfd, "300");
+        return;
     }
     
-    char line[BUFF_SIZE];
-    char user[MAX_USERNAME];
-    int stat;
-    
-    while (fgets(line, sizeof(line), f)) {
-        if (sscanf(line, "%s %d", user, &stat) == 2) {
-            if (strcmp(user, username) == 0) {
-                *status = stat;
-                fclose(f);
-                return 1; /* Account exists */
+    /* Handle USER command */
+    if (strcmp(cmd, "USER") == 0) {
+        if (sscanf(command, "USER %s", arg) != 1) {
+            tcp_send(state->sockfd, "300");
+            return;
+        }
+        
+        /* Check if already logged in */
+        if (state->is_logged_in) {
+            tcp_send(state->sockfd, "213");
+            return;
+        }
+        
+        /* Find account */
+        pthread_mutex_lock(&account_mutex);
+        int found = -1;
+        for (i = 0; i < account_count; i++) {
+            if (strcmp(accounts[i].username, arg) == 0) {
+                found = i;
+                break;
             }
         }
+        
+        if (found == -1) {
+            pthread_mutex_unlock(&account_mutex);
+            tcp_send(state->sockfd, "212");
+            return;
+        }
+        
+        if (accounts[found].status == 0) {
+            pthread_mutex_unlock(&account_mutex);
+            tcp_send(state->sockfd, "211");
+            return;
+        }
+        
+        if (accounts[found].logged_in == 1) {
+            pthread_mutex_unlock(&account_mutex);
+            tcp_send(state->sockfd, "214");
+            return;
+        }
+        
+        /* Login successful */
+        accounts[found].logged_in = 1;
+        strcpy(state->logged_user, arg);
+        state->is_logged_in = 1;
+        pthread_mutex_unlock(&account_mutex);
+        
+        tcp_send(state->sockfd, "110");
+        printf("User %s logged in\n", arg);
     }
-    
-    fclose(f);
-    return 0; /* Account not found */
+    /* Handle POST command */
+    else if (strcmp(cmd, "POST") == 0) {
+        if (!state->is_logged_in) {
+            tcp_send(state->sockfd, "221");
+            return;
+        }
+        
+        /* Extract article content (after "POST ") */
+        char *article = command + 5;
+        if (strlen(article) == 0) {
+            tcp_send(state->sockfd, "300");
+            return;
+        }
+        
+        printf("User %s posted: %s\n", state->logged_user, article);
+        tcp_send(state->sockfd, "120");
+    }
+    /* Handle BYE command */
+    else if (strcmp(cmd, "BYE") == 0) {
+        if (!state->is_logged_in) {
+            tcp_send(state->sockfd, "221");
+            return;
+        }
+        
+        /* Logout */
+        pthread_mutex_lock(&account_mutex);
+        for (i = 0; i < account_count; i++) {
+            if (strcmp(accounts[i].username, state->logged_user) == 0) {
+                accounts[i].logged_in = 0;
+                break;
+            }
+        }
+        pthread_mutex_unlock(&account_mutex);
+        
+        printf("User %s logged out\n", state->logged_user);
+        state->is_logged_in = 0;
+        tcp_send(state->sockfd, "130");
+    }
+    else {
+        tcp_send(state->sockfd, "300");
+    }
 }
 
 /* Handle client connection */
-void handle_client(int client_sock) {
-    char buff[BUFF_SIZE];
-    int bytes_received;
-    char username[MAX_USERNAME] = "";
-    int logged_in = 0; /* 0: not logged in, 1: logged in */
+void *handle_client(void *arg) {
+    conn_state_t *state = (conn_state_t *)arg;
+    char buffer[BUFF_SIZE];
+    int ret;
     
     /* Send welcome message */
-    strcpy(buff, "100");
-    tcp_send(client_sock, buff);
+    tcp_send(state->sockfd, "100");
     
+    /* Process commands */
     while (1) {
-        bytes_received = tcp_receive(client_sock, buff, BUFF_SIZE);
-        if (bytes_received <= 0) {
-            break;
+        ret = tcp_receive(state->sockfd, state, buffer, BUFF_SIZE);
+        if (ret <= 0) {
+            break; /* Connection closed or error */
         }
         
-        printf("Received: %s\n", buff);
-        
-        /* Parse command */
-        if (strncmp(buff, "USER ", 5) == 0) {
-            /* Login request */
-            if (logged_in) {
-                strcpy(buff, "213"); /* Already logged in */
-            } else {
-                char user[MAX_USERNAME];
-                sscanf(buff + 5, "%s", user);
-                
-                int status;
-                if (check_account(user, &status)) {
-                    if (status == 1) {
-                        strcpy(buff, "110"); /* Login successful */
-                        strcpy(username, user);
-                        logged_in = 1;
-                        printf("User %s logged in\n", username);
-                    } else {
-                        strcpy(buff, "211"); /* Account locked */
-                    }
-                } else {
-                    strcpy(buff, "212"); /* Account not exist */
-                }
-            }
-        } else if (strncmp(buff, "POST ", 5) == 0) {
-            /* Post article */
-            if (!logged_in) {
-                strcpy(buff, "221"); /* Not logged in */
-            } else {
-                char *article = buff + 5;
-                printf("User %s posted: %s\n", username, article);
-                strcpy(buff, "120"); /* Post successful */
-            }
-        } else if (strcmp(buff, "BYE") == 0) {
-            /* Logout */
-            if (!logged_in) {
-                strcpy(buff, "221"); /* Not logged in */
-            } else {
-                printf("User %s logged out\n", username);
-                strcpy(buff, "130"); /* Logout successful */
-                logged_in = 0;
-                username[0] = '\0';
-            }
-        } else {
-            strcpy(buff, "300"); /* Unknown command */
-        }
-        
-        if (tcp_send(client_sock, buff) <= 0) {
-            break;
-        }
-        
-        /* If logout, close connection */
-        if (strcmp(buff, "130") == 0) {
-            break;
-        }
+        printf("Received: %s\n", buffer);
+        process_command(state, buffer);
     }
     
-    close(client_sock);
-}
-
-/* Signal handler for child process */
-void sig_child(int signo) {
-    pid_t pid;
-    int stat;
-    while ((pid = waitpid(-1, &stat, WNOHANG)) > 0) {
-        printf("Child %d terminated\n", pid);
+    /* Logout if logged in */
+    if (state->is_logged_in) {
+        pthread_mutex_lock(&account_mutex);
+        for (int i = 0; i < account_count; i++) {
+            if (strcmp(accounts[i].username, state->logged_user) == 0) {
+                accounts[i].logged_in = 0;
+                printf("User %s disconnected (auto logout)\n", state->logged_user);
+                break;
+            }
+        }
+        pthread_mutex_unlock(&account_mutex);
     }
+    
+    close(state->sockfd);
+    free(state);
+    pthread_detach(pthread_self());
+    return NULL;
 }
 
 int main(int argc, char *argv[]) {
+    int listenfd, connfd;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t sin_size;
+    pthread_t tid;
+    int port;
+    
     if (argc != 2) {
         printf("Usage: %s Port_Number\n", argv[0]);
         return 1;
     }
     
-    int port = atoi(argv[1]);
-    int listen_sock, conn_sock;
-    struct sockaddr_in server_addr, client_addr;
-    socklen_t sin_size;
-    pid_t pid;
+    port = atoi(argv[1]);
+    
+    /* Load accounts */
+    load_accounts();
     
     /* Create socket */
-    if ((listen_sock = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-        perror("Socket error");
+    if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+        perror("socket() error");
         return 1;
     }
+    
+    /* Set socket options */
+    int opt = 1;
+    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     
     /* Bind */
     memset(&server_addr, 0, sizeof(server_addr));
@@ -212,53 +300,43 @@ int main(int argc, char *argv[]) {
     server_addr.sin_port = htons(port);
     server_addr.sin_addr.s_addr = INADDR_ANY;
     
-    if (bind(listen_sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
-        perror("Bind error");
+    if (bind(listenfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
+        perror("bind() error");
+        close(listenfd);
         return 1;
     }
     
     /* Listen */
-    if (listen(listen_sock, 20) == -1) {
-        perror("Listen error");
+    if (listen(listenfd, BACKLOG) == -1) {
+        perror("listen() error");
+        close(listenfd);
         return 1;
     }
     
-    /* Setup signal handler */
-    signal(SIGCHLD, sig_child);
-    
     printf("Server started at port %d\n", port);
     
-    /* Accept loop */
+    /* Accept connections */
     while (1) {
         sin_size = sizeof(client_addr);
-        if ((conn_sock = accept(listen_sock, (struct sockaddr *)&client_addr, &sin_size)) == -1) {
-            if (errno == EINTR) {
-                continue;
-            }
-            perror("Accept error");
+        connfd = accept(listenfd, (struct sockaddr *)&client_addr, &sin_size);
+        if (connfd == -1) {
+            perror("accept() error");
             continue;
         }
         
-        printf("Connected from %s:%d\n", 
-               inet_ntoa(client_addr.sin_addr), 
-               ntohs(client_addr.sin_port));
+        printf("New connection from %s:%d\n", 
+               inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
         
-        /* Fork child process */
-        pid = fork();
-        if (pid == 0) {
-            /* Child process */
-            close(listen_sock);
-            handle_client(conn_sock);
-            exit(0);
-        } else if (pid > 0) {
-            /* Parent process */
-            close(conn_sock);
-        } else {
-            perror("Fork error");
-        }
+        /* Create state for this connection */
+        conn_state_t *state = malloc(sizeof(conn_state_t));
+        memset(state, 0, sizeof(conn_state_t));
+        state->sockfd = connfd;
+        
+        /* Create thread to handle client */
+        pthread_create(&tid, NULL, handle_client, state);
     }
     
-    close(listen_sock);
+    close(listenfd);
     return 0;
 }
 

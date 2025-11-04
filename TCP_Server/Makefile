@@ -1,11 +1,15 @@
 CC = gcc
-CFLAGS = -Wall
+CFLAGS = -Wall -pthread
+TARGET = ../server
+SRC = server.c
 
-all: server
+all: $(TARGET)
 
-server: server.c
-	$(CC) $(CFLAGS) -o server server.c
+$(TARGET): $(SRC)
+	$(CC) $(CFLAGS) -o $(TARGET) $(SRC)
 
 clean:
-	rm -f server
+	rm -f $(TARGET)
+
+.PHONY: all clean
 

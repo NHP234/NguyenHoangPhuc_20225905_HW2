@@ -1,11 +1,15 @@
 CC = gcc
 CFLAGS = -Wall
+TARGET = ../client
+SRC = client.c
 
-all: client
+all: $(TARGET)
 
-client: client.c
-	$(CC) $(CFLAGS) -o client client.c
+$(TARGET): $(SRC)
+	$(CC) $(CFLAGS) -o $(TARGET) $(SRC)
 
 clean:
-	rm -f client
+	rm -f $(TARGET)
+
+.PHONY: all clean
 
