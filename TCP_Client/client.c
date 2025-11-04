@@ -1,4 +1,3 @@
-/* TCP Client for posting articles */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,7 +21,12 @@ int tcp_receive(int sockfd, conn_state_t *state, char *buffer, int max_len);
 void print_menu();
 void print_response(char *code);
 
-/* Send message with \r\n delimiter */
+/**
+ * @function tcp_send: Send message to server with \r\n delimiter
+ * @param sockfd: Socket file descriptor of the server connection
+ * @param msg: Message string to send (without \r\n)
+ * @return: Number of bytes sent on success, -1 on error
+ **/
 int tcp_send(int sockfd, char *msg) {
     char buffer[BUFF_SIZE + 2];
     int len, total = 0, bytes_sent;
@@ -43,7 +47,14 @@ int tcp_send(int sockfd, char *msg) {
     return total;
 }
 
-/* Receive message with \r\n delimiter */
+/**
+ * @function tcp_receive: Receive complete message from server (delimited by \r\n)
+ * @param sockfd: Socket file descriptor of the server connection
+ * @param state: Connection state containing receive buffer
+ * @param buffer: Buffer to store the received message
+ * @param max_len: Maximum length of the buffer
+ * @return: Length of received message on success, -1 on error
+ **/
 int tcp_receive(int sockfd, conn_state_t *state, char *buffer, int max_len) {
     int bytes_received, i;
     
@@ -73,8 +84,7 @@ int tcp_receive(int sockfd, conn_state_t *state, char *buffer, int max_len) {
             return -1; /* Buffer full */
         }
         
-        bytes_received = recv(sockfd, state->recv_buffer + state->buffer_pos, 
-                             BUFF_SIZE - state->buffer_pos - 1, 0);
+        bytes_received = recv(sockfd, state->recv_buffer + state->buffer_pos, BUFF_SIZE - state->buffer_pos - 1, 0);
         if (bytes_received <= 0) {
             return -1;
         }
@@ -83,18 +93,26 @@ int tcp_receive(int sockfd, conn_state_t *state, char *buffer, int max_len) {
     }
 }
 
-/* Print menu */
+/**
+ * @function print_menu: Display the main menu options to user
+ * @param: None
+ * @return: None
+ **/
 void print_menu() {
     printf("\n=== ARTICLE POSTING SYSTEM ===\n");
-    printf("1. Login (USER)\n");
-    printf("2. Post article (POST)\n");
-    printf("3. Logout (BYE)\n");
+    printf("1. Login\n");
+    printf("2. Post article\n");
+    printf("3. Logout\n");
     printf("4. Exit\n");
     printf("==============================\n");
     printf("Your choice: ");
 }
 
-/* Print response message */
+/**
+ * @function print_response: Translate and display server response code
+ * @param code: Response code string from server
+ * @return: None
+ **/
 void print_response(char *code) {
     if (strcmp(code, "100") == 0) {
         printf(">> Connected to server successfully\n");
@@ -121,6 +139,12 @@ void print_response(char *code) {
     }
 }
 
+/**
+ * @function main: Main client function to connect to server and handle user interaction
+ * @param argc: Number of command line arguments
+ * @param argv: Array of command line arguments (argv[1] is IP, argv[2] is port)
+ * @return: 0 on normal exit, 1 on error
+ **/
 int main(int argc, char *argv[]) {
     int sockfd;
     struct sockaddr_in server_addr;
@@ -178,7 +202,7 @@ int main(int argc, char *argv[]) {
             printf("Invalid choice\n");
             continue;
         }
-        getchar(); /* consume newline */
+        getchar(); 
         
         switch (choice) {
             case 1: /* Login */
@@ -186,7 +210,7 @@ int main(int argc, char *argv[]) {
                 if (fgets(username, sizeof(username), stdin) == NULL) {
                     break;
                 }
-                username[strcspn(username, "\n")] = 0; /* Remove newline */
+                username[strcspn(username, "\n")] = 0; 
                 
                 snprintf(command, sizeof(command), "USER %s", username);
                 if (tcp_send(sockfd, command) > 0) {
@@ -204,7 +228,7 @@ int main(int argc, char *argv[]) {
                 if (fgets(article, sizeof(article), stdin) == NULL) {
                     break;
                 }
-                article[strcspn(article, "\n")] = 0; /* Remove newline */
+                article[strcspn(article, "\n")] = 0; 
                 
                 snprintf(command, sizeof(command), "POST %s", article);
                 if (tcp_send(sockfd, command) > 0) {

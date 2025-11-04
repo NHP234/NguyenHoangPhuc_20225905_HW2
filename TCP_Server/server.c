@@ -1,4 +1,3 @@
-/* Multi-threaded TCP Server for posting articles */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,7 +42,11 @@ int tcp_receive(int sockfd, conn_state_t *state, char *buffer, int max_len);
 void *handle_client(void *arg);
 void process_command(conn_state_t *state, char *command);
 
-/* Load accounts from file */
+/**
+ * @function load_accounts: Load user accounts from file into memory
+ * @param: None
+ * @return: None
+ **/
 void load_accounts() {
     FILE *f = fopen("TCP_Server/account.txt", "r");
     if (f == NULL) {
@@ -63,7 +66,12 @@ void load_accounts() {
     printf("Loaded %d accounts\n", account_count);
 }
 
-/* Send message with \r\n delimiter */
+/**
+ * @function tcp_send: Send message to client with \r\n delimiter
+ * @param sockfd: Socket file descriptor of the client
+ * @param msg: Message string to send (without \r\n)
+ * @return: Number of bytes sent on success, -1 on error
+ **/
 int tcp_send(int sockfd, char *msg) {
     char buffer[BUFF_SIZE + 2];
     int len, total = 0, bytes_sent;
@@ -84,7 +92,14 @@ int tcp_send(int sockfd, char *msg) {
     return total;
 }
 
-/* Receive message with \r\n delimiter */
+/**
+ * @function tcp_receive: Receive complete message from client (delimited by \r\n)
+ * @param sockfd: Socket file descriptor of the client
+ * @param state: Connection state containing receive buffer
+ * @param buffer: Buffer to store the received message
+ * @param max_len: Maximum length of the buffer
+ * @return: Length of received message on success, -1 on error
+ **/
 int tcp_receive(int sockfd, conn_state_t *state, char *buffer, int max_len) {
     int bytes_received, i;
     
@@ -114,8 +129,7 @@ int tcp_receive(int sockfd, conn_state_t *state, char *buffer, int max_len) {
             return -1; /* Buffer full */
         }
         
-        bytes_received = recv(sockfd, state->recv_buffer + state->buffer_pos, 
-                             BUFF_SIZE - state->buffer_pos - 1, 0);
+        bytes_received = recv(sockfd, state->recv_buffer + state->buffer_pos, BUFF_SIZE - state->buffer_pos - 1, 0);
         if (bytes_received <= 0) {
             return -1;
         }
@@ -124,7 +138,12 @@ int tcp_receive(int sockfd, conn_state_t *state, char *buffer, int max_len) {
     }
 }
 
-/* Process client commands */
+/**
+ * @function process_command: Process and execute client commands (USER, POST, BYE)
+ * @param state: Connection state of the client
+ * @param command: Command string received from client
+ * @return: None
+ **/
 void process_command(conn_state_t *state, char *command) {
     char cmd[20], arg[BUFF_SIZE];
     int i;
@@ -137,14 +156,16 @@ void process_command(conn_state_t *state, char *command) {
     
     /* Handle USER command */
     if (strcmp(cmd, "USER") == 0) {
-        if (sscanf(command, "USER %s", arg) != 1) {
-            tcp_send(state->sockfd, "300");
-            return;
-        }
-        
         /* Check if already logged in */
         if (state->is_logged_in) {
             tcp_send(state->sockfd, "213");
+            return;
+        }
+        
+        /* Try to parse username */
+        if (sscanf(command, "USER %s", arg) != 1) {
+            /* USER command without username -> account not exist */
+            tcp_send(state->sockfd, "212");
             return;
         }
         
@@ -228,7 +249,11 @@ void process_command(conn_state_t *state, char *command) {
     }
 }
 
-/* Handle client connection */
+/**
+ * @function handle_client: Thread function to handle a client connection
+ * @param arg: Pointer to conn_state_t structure for this client
+ * @return: NULL after client disconnects
+ **/
 void *handle_client(void *arg) {
     conn_state_t *state = (conn_state_t *)arg;
     char buffer[BUFF_SIZE];
@@ -267,6 +292,12 @@ void *handle_client(void *arg) {
     return NULL;
 }
 
+/**
+ * @function main: Main server function to initialize and accept connections
+ * @param argc: Number of command line arguments
+ * @param argv: Array of command line arguments (argv[1] is port number)
+ * @return: 0 on normal exit, 1 on error
+ **/
 int main(int argc, char *argv[]) {
     int listenfd, connfd;
     struct sockaddr_in server_addr, client_addr;
@@ -281,7 +312,6 @@ int main(int argc, char *argv[]) {
     
     port = atoi(argv[1]);
     
-    /* Load accounts */
     load_accounts();
     
     /* Create socket */
@@ -290,9 +320,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    /* Set socket options */
-    int opt = 1;
-    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     
     /* Bind */
     memset(&server_addr, 0, sizeof(server_addr));
