@@ -128,8 +128,6 @@ void print_response(char *code) {
         printf(">> Account does not exist\n");
     } else if (strcmp(code, "213") == 0) {
         printf(">> Already logged in\n");
-    } else if (strcmp(code, "214") == 0) {
-        printf(">> Account already logged in on another client\n");
     } else if (strcmp(code, "221") == 0) {
         printf(">> Not logged in yet\n");
     } else if (strcmp(code, "300") == 0) {
