@@ -97,12 +97,12 @@ int tcp_send(int sockfd, char *msg) {
  * @param state: Connection state containing receive buffer
  * @param buffer: Buffer to store the received message
  * @param max_len: Maximum length of the buffer
- * @return: Length of received message on success, -1 on error
+ * @return: Length of received message on success, 0 if incomplete, -1 on error
  **/
 int tcp_receive(int sockfd, conn_state_t *state, char *buffer, int max_len) {
-    int bytes_received, i;
+    int i, bytes_received;
     
-    /* Check if we have \r\n in recv_buffer */
+    /* First, check if buffer already has complete message */
     for (i = 0; i < state->buffer_pos - 1; i++) {
         if (state->recv_buffer[i] == '\r' && state->recv_buffer[i + 1] == '\n') {
             /* Found complete message */
@@ -111,10 +111,11 @@ int tcp_receive(int sockfd, conn_state_t *state, char *buffer, int max_len) {
                 msg_len = max_len - 1;
             }
             
+            /* Copy message to output buffer */
             memcpy(buffer, state->recv_buffer, msg_len);
             buffer[msg_len] = '\0';
             
-            /* Remove message from buffer */
+            /* Remove processed message from buffer */
             state->buffer_pos -= (i + 2);
             memmove(state->recv_buffer, state->recv_buffer + i + 2, state->buffer_pos);
             
@@ -122,19 +123,42 @@ int tcp_receive(int sockfd, conn_state_t *state, char *buffer, int max_len) {
         }
     }
     
-    /* Receive more data */
+    /* No complete message in buffer, try to receive more data */
     if (state->buffer_pos >= BUFF_SIZE - 1) {
         return -1; /* Buffer full */
     }
     
     bytes_received = recv(sockfd, state->recv_buffer + state->buffer_pos, 
                          BUFF_SIZE - state->buffer_pos - 1, 0);
+    
     if (bytes_received <= 0) {
-        return -1;
+        return -1; /* Connection closed or error */
     }
     
     state->buffer_pos += bytes_received;
-    return 0; /* Need to check buffer again */
+    
+    /* Check again if we now have complete message */
+    for (i = 0; i < state->buffer_pos - 1; i++) {
+        if (state->recv_buffer[i] == '\r' && state->recv_buffer[i + 1] == '\n') {
+            /* Found complete message */
+            int msg_len = i;
+            if (msg_len >= max_len) {
+                msg_len = max_len - 1;
+            }
+            
+            /* Copy message to output buffer */
+            memcpy(buffer, state->recv_buffer, msg_len);
+            buffer[msg_len] = '\0';
+            
+            /* Remove processed message from buffer */
+            state->buffer_pos -= (i + 2);
+            memmove(state->recv_buffer, state->recv_buffer + i + 2, state->buffer_pos);
+            
+            return msg_len;
+        }
+    }
+    
+    return 0; /* Still incomplete message */
 }
 
 /**
@@ -278,10 +302,6 @@ int main(int argc, char *argv[]) {
         perror("socket() error");
         return 1;
     }
-    
-    /* Set socket options */
-    int opt = 1;
-    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     
     /* Bind */
     memset(&server_addr, 0, sizeof(server_addr));
